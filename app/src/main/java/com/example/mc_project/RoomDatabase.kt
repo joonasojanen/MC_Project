@@ -9,6 +9,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 // Developers web page was used as a base and help to create this file
 // Also used different forums for debugging but nothing has been directly copied
@@ -64,6 +66,8 @@ fun copyPickedImageToAppStorage(context: Context, uri: Uri): String {
 }
 
 class ProfileViewModel(app: Application) : AndroidViewModel(app) {
+
+    // --- data saving ---
     private val dao = AppDatabase.getInstance(app).userProfileDao()
 
     private val profile: StateFlow<UserProfileEntity> =
@@ -93,5 +97,18 @@ class ProfileViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             dao.upsert(profile.value.copy(imagePath = path))
         }
+    }
+
+    // --- Sensor/conversation feed messages ---
+    private val _messages = MutableStateFlow<List<Message>>(emptyList())
+    val messages = _messages.asStateFlow()
+
+    fun addMessage(text: String) {
+        val updated = _messages.value + Message(text)
+        _messages.value = if (updated.size > 200) updated.takeLast(200) else updated
+    }
+
+    fun clearMessages() {
+        _messages.value = emptyList()
     }
 }

@@ -7,8 +7,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import com.example.mc_project.ui.theme.MC_ProjectTheme
@@ -42,6 +40,18 @@ import androidx.compose.ui.unit.Dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import java.io.File
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.delay
+
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,10 +59,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            MC_ProjectTheme {
+            var useDarkMode by rememberSaveable { mutableStateOf(false) }
+
+            MC_ProjectTheme(darkTheme = useDarkMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Scaffold { innerPadding ->
-                        MC_ProjectNavHost(modifier = Modifier.padding(innerPadding))
+                        MC_ProjectNavHost(
+                            modifier = Modifier.padding(innerPadding),
+                            onThemeChange = { useDarkMode = it }
+                        )
                     }
                 }
             }
@@ -118,10 +133,15 @@ fun Conversation(messages: List<Message>, authorName: String, authorImagePath: S
 
 // Code from online source "developer" has been used as a base here
 @Composable
-fun MC_ProjectNavHost(modifier: Modifier = Modifier,
+fun MC_ProjectNavHost(
+    modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    onThemeChange: (Boolean) -> Unit
 ) {
     val profileVm: ProfileViewModel = viewModel()
+
+    // Start sensor for the whole app
+    StartLightSensorFeed(profileVm, onThemeChange)
 
     NavHost(
         modifier = modifier,
@@ -157,6 +177,7 @@ fun MC_ProjectNavHost(modifier: Modifier = Modifier,
 fun ConversationScreen(vm: ProfileViewModel, onGoToProfile: () -> Unit) {
     val name by vm.name.collectAsState()
     val imagePath by vm.imagePath.collectAsState()
+    val messages by vm.messages.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -173,7 +194,7 @@ fun ConversationScreen(vm: ProfileViewModel, onGoToProfile: () -> Unit) {
         }
 
         Conversation(
-            messages = SampleData.conversationSample,
+            messages = messages,
             authorName = name,
             authorImagePath = imagePath,
             modifier = Modifier.fillMaxSize()
@@ -362,10 +383,80 @@ fun ProfileHeader(name: String, imagePath: String?, modifier: Modifier = Modifie
 }
 
 // Code from online source "developer" has been used as a base here
-@Preview
+
 @Composable
-fun PreviewNavHost() {
-    MC_ProjectTheme {
-        MC_ProjectNavHost()
+fun StartLightSensorFeed(
+    vm: ProfileViewModel,
+    onThemeChange: (useDarkMode: Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    val sensorManager = remember {
+        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    }
+    val lightSensor = remember {
+        sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+    }
+
+    var latestLux by remember { mutableStateOf<Float?>(null) }
+
+    // Theme state + thresholds (tweak as you like)
+    var isDarkMode by remember { mutableStateOf(false) }
+    val darkBelowLux = 5000f // these are just for easier testing
+    val lightAboveLux = 10000f // these are just for easier testing
+
+    DisposableEffect(lightSensor) {
+        if (lightSensor == null) {
+            vm.addMessage("Light sensor not available on this device/emulator.")
+            return@DisposableEffect onDispose { }
+        }
+
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val lux = event.values.firstOrNull() ?: return
+
+                // Light sensor valid range
+                if (lux < 0f || lux > 40_000f) return
+
+                latestLux = lux
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
+        sensorManager.registerListener(
+            listener,
+            lightSensor,
+            SensorManager.SENSOR_DELAY_NORMAL
+        )
+
+        onDispose { sensorManager.unregisterListener(listener) }
+    }
+
+    // 10-second message update loop (theme change happens HERE, right before logging)
+    LaunchedEffect(Unit) {
+        val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+
+        while (true) {
+            latestLux?.let { lux ->
+                // Decide theme ONLY when we are about to print the lux message
+                val newDarkMode = when {
+                    isDarkMode && lux >= lightAboveLux -> false
+                    !isDarkMode && lux <= darkBelowLux -> true
+                    else -> isDarkMode
+                }
+
+                if (newDarkMode != isDarkMode) {
+                    isDarkMode = newDarkMode
+                    onThemeChange(newDarkMode)
+                    // optional: keep/remove this extra message
+                    // vm.addMessage("Theme -> ${if (newDarkMode) "DARK" else "LIGHT"}")
+                }
+
+                val time = timeFmt.format(Date())
+                vm.addMessage("Light: %.1f lux (at %s)".format(lux, time))
+            }
+
+            delay(10_000)
+        }
     }
 }
