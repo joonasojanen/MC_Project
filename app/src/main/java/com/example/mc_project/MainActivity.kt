@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import com.example.mc_project.ui.theme.MC_ProjectTheme
@@ -50,28 +49,57 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.delay
-
-
+import android.content.Intent
+import androidx.compose.runtime.mutableStateOf
+import android.Manifest
+import android.os.Build
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
+
+    // Holds "theme requested by notification", if any
+    private val requestedTheme = mutableStateOf<Boolean?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // If app launched from notification
+        requestedTheme.value = readThemeFromIntent(intent)
+
         setContent {
             var useDarkMode by rememberSaveable { mutableStateOf(false) }
+
+            // Apply when notification requests a theme
+            LaunchedEffect(requestedTheme.value) {
+                requestedTheme.value?.let { useDarkMode = it }
+            }
 
             MC_ProjectTheme(darkTheme = useDarkMode) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Scaffold { innerPadding ->
                         MC_ProjectNavHost(
                             modifier = Modifier.padding(innerPadding),
-                            onThemeChange = { useDarkMode = it }
+                            currentDarkMode = useDarkMode
                         )
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        requestedTheme.value = readThemeFromIntent(intent)
+    }
+
+    private fun readThemeFromIntent(intent: Intent?): Boolean? {
+        if (intent == null) return null
+        return if (intent.hasExtra("apply_theme")) {
+            intent.getBooleanExtra("apply_theme", false)
+        } else null
     }
 }
 
@@ -136,12 +164,11 @@ fun Conversation(messages: List<Message>, authorName: String, authorImagePath: S
 fun MC_ProjectNavHost(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
-    onThemeChange: (Boolean) -> Unit
+    currentDarkMode: Boolean
 ) {
     val profileVm: ProfileViewModel = viewModel()
 
-    // Start sensor for the whole app
-    StartLightSensorFeed(profileVm, onThemeChange)
+    StartLightSensorFeed(vm = profileVm, currentDarkMode = currentDarkMode)
 
     NavHost(
         modifier = modifier,
@@ -202,7 +229,7 @@ fun ConversationScreen(vm: ProfileViewModel, onGoToProfile: () -> Unit) {
     }
 }
 
-// AI was used to help align the text
+// AI was used to help align the text and buttons
 // Developer pages were used as a base to build this code block
 // AI was used to depug the url download I had 403 error
 // EXAMPLE URL: https://upload.wikimedia.org/wikipedia/commons/b/b6/Image_created_with_a_mobile_phone.png
@@ -219,12 +246,30 @@ fun ProfileScreen(vm: ProfileViewModel, onGoToConversation: () -> Unit) {
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
 
+
+    var notificationGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        notificationGranted = isGranted
+    }
+
     LaunchedEffect(dbName) {
         if (textName.isBlank()) textName = dbName
     }
 
     val pickImageLauncher = rememberLauncherForActivityResult(
-        contract = PickVisualMedia()) { uri: Uri? -> if (uri != null) {
+        contract = PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
             val storedPath = copyPickedImageToAppStorage(context, uri)
             vm.saveImagePath(storedPath)
         }
@@ -244,12 +289,14 @@ fun ProfileScreen(vm: ProfileViewModel, onGoToConversation: () -> Unit) {
     ) {
         // Profile text and conversation button
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Profile")
-            Button(onClick = onGoToConversation) { Text("Go to Conversation") }
+            Button(onClick = onGoToConversation) { Text("Go to Lux sensor data") }
         }
 
         // Coil image request
@@ -261,7 +308,20 @@ fun ProfileScreen(vm: ProfileViewModel, onGoToConversation: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
 
-        // One button to choose from gallery or url, developer pages were used as source
+        // Enable Notifications button
+        Button(
+            onClick = {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            },
+            enabled = !notificationGranted,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (notificationGranted) "Notifications Enabled" else "Enable Notifications")
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // One button to choose from gallery or url
         Box {
             Button(onClick = { photoMenuExpanded = true }) {
                 Text("Pick Profile Photo")
@@ -342,6 +402,7 @@ fun ProfileScreen(vm: ProfileViewModel, onGoToConversation: () -> Unit) {
     }
 }
 
+
 // Helper function to set the name and profile picture
 // Developer and coil github pages were used as a base to build this code block
 @Composable
@@ -383,26 +444,21 @@ fun ProfileHeader(name: String, imagePath: String?, modifier: Modifier = Modifie
 }
 
 // Code from online source "developer" has been used as a base here
-
+// AI was used to debug how to get the change in dark and light mode to work
 @Composable
 fun StartLightSensorFeed(
     vm: ProfileViewModel,
-    onThemeChange: (useDarkMode: Boolean) -> Unit,
+    currentDarkMode: Boolean,
 ) {
     val context = LocalContext.current
+    val latestDarkMode = rememberUpdatedState(currentDarkMode)
     val sensorManager = remember {
         context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     }
-    val lightSensor = remember {
-        sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
-    }
-
+    val lightSensor = remember { sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT) }
     var latestLux by remember { mutableStateOf<Float?>(null) }
-
-    // Theme state + thresholds (tweak as you like)
-    var isDarkMode by remember { mutableStateOf(false) }
-    val darkBelowLux = 5000f // these are just for easier testing
-    val lightAboveLux = 10000f // these are just for easier testing
+    val darkBelowLux = 5000f
+    val lightAboveLux = 10000f
 
     DisposableEffect(lightSensor) {
         if (lightSensor == null) {
@@ -413,43 +469,33 @@ fun StartLightSensorFeed(
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val lux = event.values.firstOrNull() ?: return
-
-                // Light sensor valid range
                 if (lux < 0f || lux > 40_000f) return
-
                 latestLux = lux
             }
-
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
         }
 
-        sensorManager.registerListener(
-            listener,
-            lightSensor,
-            SensorManager.SENSOR_DELAY_NORMAL
-        )
-
+        sensorManager.registerListener(listener, lightSensor, SensorManager.SENSOR_DELAY_NORMAL)
         onDispose { sensorManager.unregisterListener(listener) }
     }
 
-    // 10-second message update loop (theme change happens HERE, right before logging)
     LaunchedEffect(Unit) {
         val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
         while (true) {
-            latestLux?.let { lux ->
-                // Decide theme ONLY when we are about to print the lux message
+            val lux = latestLux
+            if (lux != null) {
+                val isDarkNow = latestDarkMode.value
+
                 val newDarkMode = when {
-                    isDarkMode && lux >= lightAboveLux -> false
-                    !isDarkMode && lux <= darkBelowLux -> true
-                    else -> isDarkMode
+                    isDarkNow && lux >= lightAboveLux -> false
+                    !isDarkNow && lux <= darkBelowLux -> true
+                    else -> isDarkNow
                 }
 
-                if (newDarkMode != isDarkMode) {
-                    isDarkMode = newDarkMode
-                    onThemeChange(newDarkMode)
-                    // optional: keep/remove this extra message
-                    // vm.addMessage("Theme -> ${if (newDarkMode) "DARK" else "LIGHT"}")
+                if (newDarkMode != isDarkNow) {
+                    // show notification
+                    NotificationHelper.showThemeChanged(context, newDarkMode)
                 }
 
                 val time = timeFmt.format(Date())
