@@ -2,28 +2,36 @@ package com.example.mc_project.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+/* ---------- Light theme palette ---------- */
 
-val Purple40 = Color(0xFF6650a4)
-val PurpleGrey40 = Color(0xFF625b71)
-val Pink40 = Color(0xFF7D5260)
+// Main brand (soft blue)
+val BluePrimaryLight = Color(0xFF4DA3FF)
+val BlueSecondaryLight = Color(0xFF90CAF9)
 
-// Light theme text
+// Blue grey accent
+val BlueGreyLight = Color(0xFFB0BEC5)
+
+val HighLightColorLight = Color(0xFFE3F2FD)
+
+// Text
 val TextPrimaryLight = Color(0xFF1C1C1C)
 val TextSecondaryLight = Color(0xFF6B6B6B)
 
-val HighLightColorLight = Color(0xFFB3D9FF)
+/* ---------- Dark theme palette ---------- */
 
-// Dark theme text
+// Main brand (lighter blue so it pops on dark)
+val BluePrimaryDark = Color(0xFF82B1FF)
+val BlueSecondaryDark = Color(0xFF64B5F6)
+
+// Blue grey dark accent
+val BlueGreyDark = Color(0xFF455A64)
+
+val HighLightColorDark = Color(0xFF2A3446)
+
+// Text
 val TextPrimaryDark = Color(0xFFEAEAEA)
 val TextSecondaryDark = Color(0xFFB0B0B0)
 
-val HighLightColorDark= Color(0xFF2A3446)
-
-// Light theme icons (dark icons)
+// Icons
 val IconLight = Color(0xFF1C1C1C)
-
-// Dark theme icons (light icons)
 val IconDark = Color(0xFFEAEAEA)
