@@ -148,13 +148,17 @@ fun ProfileScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Box {
-                    Button(onClick = { photoMenuExpanded = true }) { Text("Pick Profile Photo") }
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { photoMenuExpanded = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Pick Profile Photo", maxLines = 1)
+                    }
 
                     DropdownMenu(
                         expanded = photoMenuExpanded,
@@ -179,9 +183,11 @@ fun ProfileScreen(
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Automatic Theme")
-                    Spacer(Modifier.width(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Automatic Theme", modifier = Modifier.weight(1f))
                     Switch(
                         checked = themeMode == ThemeMode.SENSOR,
                         onCheckedChange = { isOn ->
