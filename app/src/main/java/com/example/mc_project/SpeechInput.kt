@@ -8,6 +8,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 // Online sources and android speech documentation was used to build this code block
 @Composable
@@ -21,6 +26,19 @@ fun SpeechInput(
     val stt = remember {
         SpeechToTextController(context) { sttState = it }
     }
+
+    var micGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { micGranted = it }
 
     DisposableEffect(Unit) {
         onDispose { stt.destroy() }
@@ -52,7 +70,11 @@ fun SpeechInput(
         Spacer(Modifier.height(8.dp))
 
         Button(onClick = {
-            if (sttState.isListening) stt.stop() else stt.start()
+            if (!micGranted) {
+                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            } else {
+                if (sttState.isListening) stt.stop() else stt.start()
+            }
         }) {
             Text(if (sttState.isListening) "Stop Mic" else "Start Mic")
         }
